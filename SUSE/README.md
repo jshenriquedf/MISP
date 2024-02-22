@@ -99,6 +99,7 @@ echo "127.0.0.1       $(hostname).brb.com.br $(hostname)" | sudo tee -a /etc/hos
 [[ ! -f /etc/rc.local ]] && echo '#!/bin/sh -e' | sudo tee -a /etc/rc.local ; echo 'exit 0' | sudo tee -a /etc/rc.local ; sudo chmod u+x /etc/rc.local
 ```
 
+
 ## PASSO 2: Configuração REPOSITÓRIOS e instalando DEPENDÊNCIAS.
 
 ### 2.1: Configurando os REPOSITÓRIOS.
@@ -178,7 +179,85 @@ sudo zypper in -y php7-fpm
 ```
 
 
+## PASSO 3: Configuração os PACOTOS instalados.
 
+### 3.1: Configure o aquivo .env com as senhas.
+```
+cat <<EOF | sudo tee  -a /home/$(echo $USER)/.env > /dev/null
+[ADMINISTRACAO]
+admin.org=ORGANIZACAO
+admin.email=admin@admin.test
+admin.pass=3dab0a06a21a3bdf64dd45818fa325ba3320e1c61eda41f027c1a19f3cd44bef
+
+[REDIS]
+redis.host=127.0.0.1
+redis.port=6379
+redis.data=13
+redis.pass=53d1b618ba79807e73b9f446b4d5cfdfd8841918654aa1a25ef98710add37586
+
+[SUPERVISOR]
+supervisor.host=127.0.0.1
+supervisor.port=9001
+supervisor.user=supervisor
+supervisor.pass=71941be3a5cda818fad1bf29192c3c957fbaff9118368f3f191735448c0fc97b
+
+[MARIADB]
+db.host=localhost
+db.port=3306
+db.admin.user=root
+db.admin.pass=414521378ae7661ef921d6a36be785d493c66b6676a1dd08e2aab64366cc2ad6
+db.misp.database=misp
+db.misp.user=user_misp
+db.misp.pass=fd50ef6aa0365598190065dc53af5cbaa595799835674865289e54a998b42df4
+
+
+EOF
+```
+
+### 3.1: Configurando o GPG.
+```
+sudo systemctl enable --now haveged.service
+```
+
+### 3.2: Configurando o PYTHON.
+```
+# Criando o link simbólico PYTHON3.10, caso não exista.
+[[ -e "/usr/bin/python3.10" ]] && sudo rm /usr/bin/python3 && sudo ln -s /usr/bin/python3.10 /usr/bin/python3
+
+# Criando o link simbólico PYTHON, caso não exista.
+[[ ! -e "/usr/bin/python" ]] && sudo ln -s /usr/bin/python3 /usr/bin/python
+
+# Adicionando o PYTHON no update-alternatives.
+[[ ! $(sudo update-alternatives --list python) ]] && sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+
+# Setando o PYTHON no update-alternatives.
+readlink -f /usr/bin/python | grep python3 || sudo alternatives --set python /usr/bin/python3
+```
+
+### 3.3: Configurando o REDIS.
+```
+# Criando os arqios para utilização.
+sudo cp -a /etc/redis/default.conf.example /etc/redis/default.conf
+sudo cp -a /etc/redis/sentinel.conf.example /etc/redis/sentinel.conf
+
+# Configurnado o arquivo /etc/redis/default.conf para utilização.
+sudo sed -i "s/^\(bind\ \).*/\1${REDIS_HOST} -::1/" /etc/redis/default.conf
+[[ ${REDIS_PASS} != '' ]] && sudo sed -i "s/^#\ \(requirepass\ \).*/\1${REDIS_PASS}/" /etc/redis/default.conf
+sudo sed -i "s/^\(appendonly\ \).*/\1yes/" /etc/redis/default.conf
+sudo sed -i 's/^\(appendfilename\ \).*/\1\"appendonly.aof\"/' /etc/redis/default.conf
+
+loginfo "[CONFIG][REDIS]" "Configurando: ${COLOR_RED}vm.overcommit_memory${COLOR_NC}."
+[[ ! "$(grep vm.overcommit_memory /etc/rc.local)" ]] && sudo sed -i -e '$i \sysctl vm.overcommit_memory=1\n' /etc/rc.local
+
+sudo chown -R redis:redis /etc/redis
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now redis@default
+```
+
+### 3.3: Configurando o PHP 7.
+```
+```
 
 
 
