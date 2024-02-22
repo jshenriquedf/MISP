@@ -11,11 +11,19 @@ su -
 zypoer in -y sudo
 
 # Adiciona o usuário padrão ao grupo de superusuário, caso já não esteja.
-[[ $(groups cerberus | grep wheen) ]] && usermod -aG wheen cerberus
+[[ $(groups cerberus | grep wheen) ]] && usermod -aG wheen <user>
 
-[[ ! -z ${USER_DEFAULT} ]] && [[ ! -f /etc/sudoers.d/${USER_DEFAULT} ]] && echo "${USER_DEFAULT} ALL=(ALL:ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${USER_DEFAULT}
-[[ ${SUDOERS_LOGFILE} == true ]] && sudo sed -i '/Defaults\ log_output/i Defaults\ logfile=\/var\/log/\sudo.log' /etc/sudoers
-[[ ${SUDOERS_TIMEOUT} == true ]] && sudo sed -i "/Defaults\ log_output/i Defaults\ timestamp_timeout=${SUDOERS_TIMEOUT_TIME}" /etc/sudoers
+# Logue novamente como usuário padrão.
+sudo - <user>
+
+# Configurando o usuário padrão na pasta sudoers.
+[[ ! -f /etc/sudoers.d/<user> ]] && echo "<user> ALL=(ALL:ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/<user>
+
+# Habilitando a gravação de log dos comando SUDO.
+sudo sed -i '/Defaults\ log_output/i Defaults\ logfile=\/var\/log/\sudo.log' /etc/sudoers
+
+# Definindo o tempo para que não seja solicitado a senha novamente.
+sudo sed -i "/Defaults\ log_output/i Defaults\ timestamp_timeout=${SUDOERS_TIMEOUT_TIME}" /etc/sudoers
 ```
 
 ### 1.1: Configuração do arquivo **SWAP**.
