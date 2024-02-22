@@ -23,10 +23,35 @@ sudo - <user>
 sudo sed -i '/Defaults\ log_output/i Defaults\ logfile=\/var\/log/\sudo.log' /etc/sudoers
 
 # Definindo o tempo para que não seja solicitado a senha novamente.
-sudo sed -i "/Defaults\ log_output/i Defaults\ timestamp_timeout=${SUDOERS_TIMEOUT_TIME}" /etc/sudoers
+sudo sed -i '/Defaults\ log_output/i Defaults\ timestamp_timeout=60' /etc/sudoers
 ```
 
-### 1.1: Configuração do arquivo **SWAP**.
+### 1.2: Configurando o TimeZone.
+```
+# Definidno o TimeZone de São Paulo - BR.
+sudo timedatectl set-timezone America/Sao_Paulo
+
+# Configurnaod o NTP e o FallbackNTP par antp.br.
+sudo sed -i "s/^#\(NTP=\).*/\1a.ntp.br/g" /etc/systemd/timesyncd.conf
+sudo sed -i "s/^#\(FallbackNTP=\).*/\1a.ntp.br/g" /etc/systemd/timesyncd.conf
+
+# Habilitando o NTP
+sudo timedatectl set-ntp true
+
+# Sicronizando o relógio para a referência local.
+sudo sudo hwclock --systohc --localtime
+
+# Reiniciando o serviço para aplicar as configurações.
+sudo service systemd-timesyncd restart
+
+# Setando a configuração do DATE no padrão BR.
+sudo localectl set-locale LC_TIME=pt_BR.UTF-8
+
+# Expotando variável local.
+export LC_TIME=pt_BR.UTF-8
+```
+
+### 1.3: Configuração do arquivo **SWAP**.
 
 > Criando arquivo e habilitando o seu uso.
 ```
@@ -60,3 +85,31 @@ sudo swapon --show
 # Mostra todo espaço para utilização como memória.
 sudo free -th
 ```
+
+### 1.4: Configurando o arquivo /etc/hosts.
+```
+# Configurnado o arquivo HOSTS com o hostname.
+echo "127.0.0.1       $(hostname).brb.com.br $(hostname)" | sudo tee -a /etc/hosts
+```
+
+### 1.4: Configurando o arquivo /etc/rc.local.
+> **Obs.**: Esse arquivo será utilizado para inicializar as variáveil de ambiente ao reniciar.
+```
+# Criando o arquivo RC.LOCAL, caso não exista..
+[[ ! -f /etc/rc.local ]] && echo '#!/bin/sh -e' | sudo tee -a /etc/rc.local ; echo 'exit 0' | sudo tee -a /etc/rc.local ; sudo chmod u+x /etc/rc.local
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
