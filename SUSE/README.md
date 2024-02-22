@@ -182,24 +182,24 @@ sudo zypper in -y \
     python310-setuptools
 
 sudo zypper in -y \
-	php7 \
-	php7-cli \
-	php7-gd \
-	php7-mysql \
-	php7-bcmath \
-	php7-opcache \
-	php7-intl \
-	php7-zip \
-	php7-pear \
-	php7-redis \
-	php-composer2 \
-	php7-fileinfo \
-	php7-pcntl \
-	php7-gmp \
-	php7-pecl \
-	php7-APCu \
-	php7-posix \
-	php7-xdebug
+    php7 \
+    php7-cli \
+    php7-gd \
+    php7-mysql \
+    php7-bcmath \
+    php7-opcache \
+    php7-intl \
+    php7-zip \
+    php7-pear \
+    php7-redis \
+    php-composer2 \
+    php7-fileinfo \
+    php7-pcntl \
+    php7-gmp \
+    php7-pecl \
+    php7-APCu \
+    php7-posix \
+    php7-xdebug
 ```
 
 **3.3.** Instalação do **SUPERVISOR**.
