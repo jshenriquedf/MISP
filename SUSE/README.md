@@ -92,16 +92,90 @@ sudo free -th
 echo "127.0.0.1       $(hostname).brb.com.br $(hostname)" | sudo tee -a /etc/hosts
 ```
 
-### 1.4: Configurando o arquivo /etc/rc.local.
+### 1.5: Configurando o arquivo /etc/rc.local.
 > **Obs.**: Esse arquivo será utilizado para inicializar as variáveil de ambiente ao reniciar.
 ```
 # Criando o arquivo RC.LOCAL, caso não exista..
 [[ ! -f /etc/rc.local ]] && echo '#!/bin/sh -e' | sudo tee -a /etc/rc.local ; echo 'exit 0' | sudo tee -a /etc/rc.local ; sudo chmod u+x /etc/rc.local
 ```
 
+## PASSO 2: Configuração REPOSITÓRIOS e instalando DEPENDÊNCIAS.
 
+### 2.1: Configurando os REPOSITÓRIOS.
+```
+sudo SUSEConnect -p sle-module-desktop-applications/15.4/x86_64
+sudo SUSEConnect -p sle-module-development-tools/15.4/x86_64
+sudo SUSEConnect -p PackageHub/15.4/x86_64
+sudo SUSEConnect -p sle-module-python3/15.4/x86_64
+sudo SUSEConnect -p sle-module-legacy/15.4/x86_64
+sudo SUSEConnect -p sle-module-web-scripting/15.4/x86_64
+```
 
+### 2.2: Instalando DEPENDÊNCIAS.
+```
+# Instalando o pacote para configuração de REDE.
+sudo zypper in -y NetworkManager
 
+# Instalando os pacotes base para demias instalções.
+sudo zypper in -y \
+    gcc make \
+    git zip unzip \
+    nano vim \
+    cntlm gpg2 openssl curl unbound bind-utils \
+    moreutils \
+    redis \
+    glibc-locale \
+    libxslt-devel zlib-devel libgpg-error-devel libffi-devel libfuzzy-devel libxml2-devel libassuan-devel
+
+# Instalando o GPG.
+sudo zypper in -y haveged
+
+# Instalando o APACHE2.
+sudo zypper in -y httpd apache2-mod_php7
+
+# Instalando o PYTHON 3.10.
+sudo zypper in -y \
+    python310 \
+    python310-devel \
+    python310-pip \
+    python310-setuptools
+
+# Instalando o PHP 7
+sudo zypper in -y \
+    php7 \
+    php7-cli \
+    php7-gd \
+    php7-mysql \
+    php7-bcmath \
+    php7-opcache \
+    php7-intl \
+    php7-zip \
+    php7-pear \
+    php7-redis \
+    php-composer2 \
+    php7-fileinfo \
+    php7-pcntl \
+    php7-gmp \
+    php7-pecl \
+    php7-APCu \
+    php7-posix \
+    php7-xdebug
+
+# Instalando o MARIADB
+sudo zypper in -y \
+    mariadb \
+    mariadb-server
+
+##### Os pacotes abaixo são recomendados, contudo opcionais.
+# Instalando o SUPERVISOR
+sudo zypper in -y supervisor
+
+# Instalando o pacote supervisor para o PYTHON
+sudo pip3 install supervisor
+
+# Instalando o PHP7-FPM
+sudo zypper in -y php7-fpm
+```
 
 
 
