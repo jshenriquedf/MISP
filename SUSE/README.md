@@ -18,9 +18,9 @@ systemctl restart firewalld.service
 ```
 
 ### 1.2: Configurnado o IPTABLES.
-```
-```
 
+```
+```
 
 ### 1.3: Instalando o SUDO e editor VIM.
 
@@ -53,7 +53,7 @@ sed -i '/Defaults\ log_output/i Defaults\ timestamp_timeout=60' /etc/sudoers
 sudo - <user>
 ```
 
-### 1.1: Criação do diretório "admin" para arquivos de configuração.
+### 1.4: Criação do diretório "admin" para arquivos de configuração.
 
 ```
 # Cria o diretório /admin
@@ -62,7 +62,8 @@ sudo mkdir /admin
 # Entra na pasta /admin
 cd /admin
 ```
-### 1.1: Criação do arquivo que será utilizado na configuração.
+
+### 1.5: Criação do arquivo que será utilizado na configuração.
 
 ```
 # Criando o arquivo /admin/.env
@@ -76,6 +77,7 @@ sudo vim /admin/.env
 ```
 
 # Configurações.
+
 ```
 [SWAP]
 SWAP_ENABLE=true		## Habilita a criação de SWAP local
@@ -101,34 +103,14 @@ SUPERVISOR_PASS=
 > Caso deseje, o comando abaixo gera senhas automaticamento com openssl.
 
 ```
-sudo sed -i 's/^\(.*_PASS=\).*/\1$(openssl rand -hex 32)/' /admin/.env
+sudo sed -i "s/^\(.*_PASS=\).*/\1$(openssl rand -hex 32)/" /admin/.env
 ```
 
-
-
-
-
-## PASSO 0: FIREWALL
-
-Variáveis locais
-```
+### 1.6: Exportando as variáveis setadas no arquivo .env.
 
 ```
-
-## PASSO 1: VARIÁVEIS
-
-**Variáveis locais**.
-> **Obs.**: Essa variveis serão utilizadas durante a instalação do MISP e poderão permancer para futuras manutenções.
-```
-echo "
-PATH_TO_MISP=/srv/www/MISP
-WWW_USER=wwwrun
-SUDO_WWW='sudo -H -u wwwrun'
-CAKE="/srv/www/MISP/app/Console/cake"
-
-" | sudo tee -a /etc/environment
-
-source /etc/environment
+export $(sudo egrep -v "^\s*(;|$|\[)" /admin/.env | cut -f1 -d$'\t' | cut -f1 -d' ' | xargs)
+unset $(sudo egrep -v "^\s*(;|$|\[)" /admin/.env | cut -f1 -d'=')
 ```
 
 ## PASSO 2: Configurações LOCAIS.
