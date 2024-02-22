@@ -130,7 +130,7 @@ export LC_TIME=pt_BR.UTF-8
 
 **2.2.** Configuração do **HOSTS**.
 ```
-echo "127.0.0.1       $(hostname).brb.com.br $(hostname)" | sudo tee -a /etc/hosts
+echo "127.0.0.1       $(hostname) $(hostname)" | sudo tee -a /etc/hosts
 ```
 
 **2.3.** Configuração do **RC.LOCAL**.
