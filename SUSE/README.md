@@ -1,6 +1,6 @@
-## INSTALAÇÃO DO MISP - SUSE
+# INSTALAÇÃO DO MISP - SUSE
 
-# PASSO 1: Configuração do arquivo **SWAP**.
+### PASSO 1: Configuração do arquivo **SWAP**.
 
 **1.1**: Criando arquivo e habilitando o seu uso.
 ```
