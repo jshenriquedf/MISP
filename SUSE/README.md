@@ -2,7 +2,7 @@
 
 # PASSO 1: Configuração do arquivo **SWAP**.
 
-- **1.1**: Criando arquivo e habilitando o seu uso.
+**1.1**: Criando arquivo e habilitando o seu uso.
 ```
 sudo touch /swapfile
 sudo chattr +C /swapfile
