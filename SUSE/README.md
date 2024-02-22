@@ -20,6 +20,7 @@ systemctl restart firewalld.service
 ### 1.2: Configurnado o IPTABLES.
 
 ```
+...
 ```
 
 ### 1.3: Instalando o SUDO e editor VIM.
@@ -76,7 +77,7 @@ sudo chmod 0600 /admin/.env
 sudo vim /admin/.env
 ```
 
-# Configurações.
+## Configurações.
 
 ```
 [SWAP]
@@ -110,7 +111,7 @@ sudo sed -i "s/^\(.*_PASS=\).*/\1$(openssl rand -hex 32)/" /admin/.env
 
 ```
 export $(sudo egrep -v "^\s*(;|$|\[)" /admin/.env | cut -f1 -d$'\t' | cut -f1 -d' ' | xargs)
-unset $(sudo egrep -v "^\s*(;|$|\[)" /admin/.env | cut -f1 -d'=')
+# unset $(sudo egrep -v "^\s*(;|$|\[)" /admin/.env | cut -f1 -d'=')
 ```
 
 ## PASSO 2: Configurações LOCAIS.
@@ -130,19 +131,18 @@ export LC_TIME=pt_BR.UTF-8
 
 **2.2.** Configuração do **HOSTS**.
 ```
-echo "127.0.0.1       $(hostname) $(hostname)" | sudo tee -a /etc/hosts
+echo "127.0.0.1       $(hostname).brb.com.br $(hostname)" | sudo tee -a /etc/hosts
 ```
 
 **2.3.** Configuração do **RC.LOCAL**.
 
 Criação e configuração do arquivo /etc/rc.local caso não exista.
 ```
-if [[ ! -f /etc/rc.local ]]; then
-  echo '#!/bin/sh -e' | sudo tee -a /etc/rc.local
-  echo 'exit 0' | sudo tee -a /etc/rc.local
-  sudo chmod u+x /etc/rc.local
-fi
+# Verificação e criação do arquivo.
+[[ ! -f /etc/rc.local ]] && echo '#!/bin/sh -e' | sudo tee -a /etc/rc.local ; echo 'exit 0' | sudo tee -a /etc/rc.local
 
+# Aplicando as permissões de execução do arquivo
+[[ ! -f /etc/rc.local ]] && sudo chmod u+x /etc/rc.local
 ```
 
 ## PASSO 3: REPOSITÓRIOS.
@@ -162,24 +162,24 @@ sudo SUSEConnect -p sle-module-web-scripting/15.4/x86_64
 **3.2.** Instalação de **DEPENDÊNCIAS**.
 ```
 sudo zypper in -y \
-	gcc make \
-	git zip unzip \
-	nano vim \
-	cntlm gpg2 openssl curl unbound bind-utils \
-	moreutils \
-	redis \
-	glibc-locale \
-	libxslt-devel zlib-devel libgpg-error-devel libffi-devel libfuzzy-devel libxml2-devel libassuan-devel
+    gcc make \
+    git zip unzip \
+    nano \
+    cntlm gpg2 openssl curl unbound bind-utils \
+    moreutils \
+    redis \
+    glibc-locale \
+    libxslt-devel zlib-devel libgpg-error-devel libffi-devel libfuzzy-devel libxml2-devel libassuan-devel
 
 sudo zypper in -y haveged
 
 sudo zypper in -y httpd apache2-mod_php7
 
 sudo zypper in -y \
-	python310 \
-	python310-devel \
-	python310-pip \
-	python310-setuptools
+    python310 \
+    python310-devel \
+    python310-pip \
+    python310-setuptools
 
 sudo zypper in -y \
 	php7 \
@@ -206,9 +206,9 @@ sudo zypper in -y \
 
 > **Obs.**: Essa instalação derevá ser realizada caso deseje que o **SUPERVISOR** gerencie os **Works** do **MISP**.
 ```
-sudo zypper in -y supervisor
+[[ ! -z ${SUPERVISOR_ENABLE} ]] && sudo zypper in -y supervisor
 
-pip3 install --proxy=http://<user><pass>@<host>:<port> -U supervisor
+[[ ! -z ${SUPERVISOR_ENABLE} ]] && pip3 install --proxy=http://<user><pass>@<host>:<port> -U supervisor
 ```
 
 ## PASSO 4: Configuração das DEPENDÊNCIAS.
@@ -244,24 +244,49 @@ sudo chown -R redis:redis /etc/redis
 sudo systemctl daemon-reload
 sudo systemctl enable --now redis@default
 ```
-> **Obs1.**: Como de medida de segurança é recomendado a aplicação de senha na utilização do REDIS.
+> **Obs1.**: Como de medida de segurança é recomendado a utilização de senha para acesso ao REDIS.
 
-> **Obs2.**: Altere "<REDIS_PASS>" para a senha desejada.
-
-> **Obs3.**: Para utilização de senha ao acesso ao REDIS, utilizado o camando abaixo.
+> **Obs2.**: O comando abaixo verifica se a variável REDIS_PASS existe e se foi definido senha, caso positivo será configurado.
 
 
 ```
-sudo sed -i "s/^#\ \(requirepass\ \).*/\1<REDIS_PASS>/" /etc/redis/default.conf
+[[ ! -z ${REDIS_PASS} ]] && sudo sed -i "s/^#\ \(requirepass\ \).*/\1${REDIS_PASS}/" /etc/redis/default.conf
 ```
-
 
 **4.4.** Configuração **PHP 7**.
 ```
+# Configuração do módulo REDIS no PHP7.
 sudo sed -i "s|.*redis.session.locking_enabled = .*|redis.session.locking_enabled = 1|" /etc/php7/conf.d/redis.ini
 sudo sed -i "s|.*redis.session.lock_expire = .*|redis.session.lock_expire = 30|" /etc/php7/conf.d/redis.ini
 sudo sed -i "s|.*redis.session.lock_wait_time = .*|redis.session.lock_wait_time = 50000|" /etc/php7/conf.d/redis.ini
 sudo sed -i "s|.*redis.session.lock_retries = .*|redis.session.lock_retries = 30|" /etc/php7/conf.d/redis.ini
+
+# Cópia de backup do aruivo /etc/php7/cli/php.ini.
+sudo cp -a /etc/php7/cli/php.ini /etc/php7/cli/php.ini_old
+
+sudo sed -i "s/memory_limit = .*/memory_limit = 2048M/" "${FILE}"
+sudo sed -i "s/max_execution_time = .*/max_execution_time = 300/" "${FILE}"
+sudo sed -i "s/upload_max_filesize = .*/upload_max_filesize = 50M/" "${FILE}"
+sudo sed -i "s/post_max_size = .*/post_max_size = 50M/" "${FILE}"
+
+sudo sed -i "s|.*session.use_strict_mode = .*|session.use_strict_mode = 1|" "${FILE}"
+sudo sed -i "s|.*session.serialize_handler = .*|session.serialize_handler = php|" "${FILE}"
+sudo sed -i "s|.*session.sid_length = .*|session.sid_length = 32|" "${FILE}"
+sudo sed -i "s|.*session.sid_bits_per_character = .*|session.sid_bits_per_character = 5|" "${FILE}"
+
+sudo sed -i '/expose_php =/ s/.*/expose_php = Off/' "${FILE}"
+
+sudo sed -i "s|^session.save_handler = .*|session.save_handler = redis|" "${FILE}"
+sudo sed -i "s|^session.save_path = .*|session.save_path = 'tcp://127.0.0.1:6379'|" "${FILE}"
+
+	[[ ! -z ${REDIS_PASS} ]] && sudo sed -i "s|.*session.save_path = .*|session.save_path = 'tcp://${REDIS_HOST}:${REDIS_PORT}?auth=${REDIS_PASS}'|" "${FILE}"
+
+
+
+
+
+
+
 
 for FILE in /etc/php7/*/php.ini
 do
@@ -283,8 +308,8 @@ do
 	sudo sed -i "s|^session.save_handler = .*|session.save_handler = redis|" "${FILE}"
 	sudo sed -i "s|^session.save_path = .*|session.save_path = 'tcp://127.0.0.1:6379'|" "${FILE}"
 
-	# O comando abaixo verifica se foi definido uma senha para o REDIS, caso positivo e essa senha é adicionada ao arquivo PHP.
-	[[ ! -z $(sudo grep "^requirepass" /etc/redis/default.conf) ]] && sudo sed -i "s|.*session.save_path = .*|session.save_path = 'tcp://127.0.0.1:6379?auth=$(sudo grep "^requirepass" /etc/redis/default.conf | cut -f2 -d' ')'|" "${FILE}"
+	 [[ ! -z ${REDIS_PASS} ]] && sudo sed -i "s|.*session.save_path = .*|session.save_path = 'tcp://${REDIS_HOST}:${REDIS_PORT}?auth=${REDIS_PASS}'|" "${FILE}"
+	
 done
 ```
 
