@@ -2,28 +2,138 @@
 
 ## PASSO 1: Configuração INICIAIS.
 
-### 1.1: Instalando o SUDO e editores.
+### 1.1: Habilitando o serviço SSH para habilitar acesso remoto.
 
-> **Obs.**: Substitua o termo <user> pelo nome do usuário padrão.
+> **Obs.**: Caso não consiga acessar o servidor via SSH verifique se está habilitado no FIREWALL.
 
 ```
+# Verificando se o serviço SSH está habilitado.
+firewall-cmd --list-all
+
+# Adicionando o serviço SSH na Zona PUBLIC de forma permanente.
+firewall-cmd --zone=public --add-service=ssh --permanent
+
+# Reiniciando o servico para aplicar as configurações.
+systemctl restart firewalld.service
+```
+
+### 1.2: Configurnado o IPTABLES.
+```
+```
+
+
+### 1.3: Instalando o SUDO e editor VIM.
+
+> **Obs.**: Substitua o termo "\<user\>" pelo nome do usuário padrão.
+
+```
+# Acesse o servido com via SSH
+ssh <use>@<IP> -p 22
+
 # Logue no servidor e escale privilégio para root.
 su -
 
 # Instale o pacote SUDO e editores 
-zypoer in -y sudo nano vim
+zypoer in -y sudo vim
 
 # Adiciona o usuário padrão ao grupo de superusuário, caso já não esteja.
-[[ $(groups <user> | grep wheen) ]] && usermod -aG wheen <user>
+usermod -aG wheel <user>
+
+
+# Configurando o usuário padrão na pasta sudoers.
+echo "<user> ALL=(ALL:ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/<user>
+
+# Habilitando a gravação de log dos comando SUDO.
+sed -i '/Defaults\ log_output/i Defaults\ logfile=\/var\/log/\sudo.log' /etc/sudoers
+
+# Definindo o tempo para que não seja solicitado a senha novamente.
+sed -i '/Defaults\ log_output/i Defaults\ timestamp_timeout=60' /etc/sudoers
 
 # Logue novamente como usuário padrão.
 sudo - <user>
 ```
 
+### 1.1: Criação do diretório "admin" para arquivos de configuração.
+
+```
+# Cria o diretório /admin
+sudo mkdir /admin
+
+# Entra na pasta /admin
+cd /admin
+```
 ### 1.1: Criação do arquivo que será utilizado na configuração.
 
 ```
+# Criando o arquivo /admin/.env
+sudo touch /admin/.env
+
+# Alterando a permissão do arqui para READ e WRITE apenas para o dono do arquivo.
+sudo chmod 0600 /admin/.env
+
+# Abra o arquivo .env com o coimando abaixo e cole as configurações abaixo.
+vim /admin/.env
+
+# Configurações.
+[SWAP]
+SWAP_ENABLE=true		## Habilita a criação de SWAP local
+SWAP_FILE=/swapfile		## Nome do arquivo de SWAP
+SWAP_SIZE=3				## Tamanho do arquivo de SWAP em GB
+
+[REDIS]
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_DATA=13
+REDIS_PASS=53d1b618ba79807e73b9f446b4d5cfdfd8841918654aa1a25ef98710add37586
+
+[SUPERVISOR]
+SUPERVISOR_ENABLE=true
+SUPERVISOR_HOST=127.0.0.1
+SUPERVISOR_PORT=9001
+SUPERVISOR_USER=supervisor
+SUPERVISOR_PASS=71941be3a5cda818fad1bf29192c3c957fbaff9118368f3f191735448c0fc97b
+
 ```
+
+
+
+## PASSO 0: FIREWALL
+
+Variáveis locais
+```
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```
 
