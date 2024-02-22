@@ -2,19 +2,30 @@
 
 ## PASSO 1: Configuração INICIAIS.
 
-### 1.1: Instalando e configurando o sudo.
+### 1.1: Instalando o SUDO e editores.
+
+> **Obs.**: Substitua o termo <user> pelo nome do usuário padrão.
+
 ```
 # Logue no servidor e escale privilégio para root.
 su -
 
-# Instale o pacote SUDO
-zypoer in -y sudo
+# Instale o pacote SUDO e editores 
+zypoer in -y sudo nano vim
 
 # Adiciona o usuário padrão ao grupo de superusuário, caso já não esteja.
-[[ $(groups cerberus | grep wheen) ]] && usermod -aG wheen <user>
+[[ $(groups <user> | grep wheen) ]] && usermod -aG wheen <user>
 
 # Logue novamente como usuário padrão.
 sudo - <user>
+```
+
+### 1.1: Criação do arquivo que será utilizado na configuração.
+
+```
+```
+
+```
 
 # Configurando o usuário padrão na pasta sudoers.
 [[ ! -f /etc/sudoers.d/<user> ]] && echo "<user> ALL=(ALL:ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/<user>
