@@ -1,0 +1,1219 @@
+#!/bin/bash 
+
+## SCRIPT de INSTALAÇÂO do MISP em servidores SUSE
+# 
+# Systemas suportados:
+# - SUSE 15 SP5 & SP4
+#
+# AUTOR: Jose Henrique da Silva
+# Gerência: GECIB
+#
+##
+
+VERSION='1.0'
+SCRIPT_NAME="INSTALL_MISP_BRB.sh"
+
+# Saida para qualquer erro.
+set -e
+
+# Configuração de cores para visualização
+function colors () {
+  COLOR_NC='\033[0m' 
+  COLOR_WHITE='\033[1;37m'
+  COLOR_BLACK='\033[0;30m'
+  COLOR_BLUE='\033[0;34m'
+  COLOR_LIGHT_BLUE='\033[1;34m'
+  COLOR_GREEN='\033[0;32m'
+  COLOR_LIGHT_GREEN='\033[1;32m'
+  COLOR_CYAN='\033[0;36m'
+  COLOR_LIGHT_CYAN='\033[1;36m'
+  COLOR_RED='\033[0;31m'
+  COLOR_LIGHT_RED='\033[1;31m'
+  COLOR_PURPLE='\033[0;35m'
+  COLOR_LIGHT_PURPLE='\033[1;35m'
+  COLOR_BROWN='\033[0;33m'
+  COLOR_YELLOW='\033[1;33m'
+  COLOR_GRAY='\033[1;30m'
+  COLOR_LIGHT_GRAY='\033[0;37m'
+}
+
+###################### FUNÇÕES DE LOG ---------------------------------------------------
+function space () { for i in `seq 1 $(tput cols)`; do echo -n "-";  done ; }
+
+# Substitui a função de data.
+function prepare_date () {  date "$@"; }
+
+# LOG central
+function log () { echo -e "${1} ${2} ${3}" ; }
+
+# Log information
+function loginfo () { log "${COLOR_YELLOW}[INFO]${COLOR_NC}" "${COLOR_GREEN}${1}${COLOR_NC}" "${2}" ; }
+###################### FIM FUNÇÕES DE LOG -----------------------------------------------
+
+
+###################### CONFIG FIREWALLD -------------------------------------------------
+function enableSSH () {
+  # Verificando se o serviço SSH está habilitado.
+  firewall-cmd --list-all
+
+  # Adicionando o serviço SSH na Zona PUBLIC de forma permanente.
+  firewall-cmd --zone=public --add-service=ssh --permanent
+
+  # Reiniciando o servico para aplicar as configurações.
+  systemctl restart firewalld.service
+}
+###################### FIM CONFIG FIREWALLD ----------------------------------------------
+
+###################### CONFIG SUDO E SUDOERS ---------------------------------------------
+function checkSudoers () {
+  space
+  loginfo "[CHECK][SUDO-VIM]" "Verificando se o ${COLOR_RED}SUDO${COLOR_NC} e o ${COLOR_RED}VIM${COLOR_NC} estão instalados."
+  loginfo "[CHECK][PASS]" "Digite a senha de root para intalação do sudo."
+  # Obs.: Instala os pacotes SUDO e VIM.
+  # Obs.: Adiciona o usuário ao grupo wheel.
+  # Obs.: Configura a perissão do usuário no sudoers.
+  su -c 'zypper in -y sudo vim \
+      && [ -z $(groups "${USER}" | grep wheel) ] && usermod -aG wheel "${USER}" \
+      && echo "${USER} ALL=(ALL:ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/"${USER}"'
+
+  # Habilitando a gravação de log dos comando SUDO.
+  sudo sed -i '/Defaults\ log_output/i Defaults\ logfile=\/var\/log/\sudo.log' /etc/sudoers
+
+  # Definindo o tempo para que não seja solicitado a senha novamente.
+  sudo sed -i '/Defaults\ log_output/i Defaults\ timestamp_timeout=60' /etc/sudoers
+}
+###################### FIM CONFIG SUDO E SUDOERS -----------------------------------------
+
+###################### CONFIG ADMIN ------------------------------------------------------
+function adminDirectory () {
+  if [[ ! -d "/admin" ]]; then  
+    space && loginfo "[ADMIN][DIRECTORY]" "Criando diretótio ${COLOR_RED}ADMIN${COLOR_NC}."
+    # Cria o diretório /admin
+    sudo mkdir /admin
+  fi
+  # Entra na pasta /admin
+  cd /admin
+}
+
+function adminFileEnv () {
+  space && loginfo "[ADMIN][.ENV]" "Criando arquivo ${COLOR_RED}.ENV${COLOR_NC}."
+
+  # Remove o arquivo /admin/.env, caso exista.
+  [[ -f "/admin/.env" ]] && sudo rm -f /admin/.env
+
+  # Criando o arquivo /admin/.env
+  sudo touch /admin/.env
+
+  # Alterando a permissão do arqui para READ e WRITE apenas para o dono do arquivo.
+  sudo chmod 0600 /admin/.env
+}
+
+function adminFileEnvConfig () {
+  # Abra o arquivo .env com o coimando abaixo e cole as configurações abaixo.
+  space && loginfo "[ADMIN][.ENV]" "Populando o arquivo ${COLOR_RED}.ENV${COLOR_NC}."
+  cat <<EOF | sudo tee /admin/.env > /dev/null
+[O.S.]
+SUSE_SP=$(. /etc/os-release && echo ${VERSION_ID})
+FLAVOUR=$(. /etc/os-release && echo ${ID} | tr '[:lower:]' '[:upper:]')
+PRETTY="$(. /etc/os-release && echo ${PRETTY_NAME} | tr '[:lower:]' '[:upper:]')"
+
+
+[ADMIN]
+ADMIN_HOSTNAME=misp
+ADMIN_DOMINIO=local
+ADMIN_SITE="\${ADMIN_HOSTNAME}.\${ADMIN_DOMINIO}"
+
+AMDIN_PROXY=
+ADMIN_CERT_ENABLE=false
+ADMIN_CERT_SORCE_CRT=
+ADMIN_CERT_SORCE_KEY=
+ADMIN_CERT_SORCE_PERM=
+ADMIN_CERT_DEST_KEY=/etc/pki/tls/private/\${ADMIN_SITE}.key
+ADMIN_CERT_DEST_PER=/etc/pki/tls/certs/\${ADMIN_SITE}.pem
+ADMIN_CERT_DEST_CRT=/etc/pki/tls/certs/\${ADMIN_SITE}.crt
+ADMIN_CERT_DEST_CRT_CHAIN=/etc/pki/tls/certs/\${ADMIN_SITE}-chain.cst
+ADMIN_CERT_DEST_CSR=/etc/pki/tls/certs/\${ADMIN_SITE}.csr
+
+[ADMIN-OPENSSL]
+OPENSSL_ENABLE=true
+OPENSSL_CN="\${ADMIN_SITE}"
+OPENSSL_C=BR
+OPENSSL_ST="Distrito Federal"
+OPENSSL_L="Brasília"
+OPENSSL_O=BRB
+OPENSSL_OU="Banco de Brasilia"
+OPENSSL_EMAILADDRESS=admin@admin.local
+
+[ADMIN-OGPG]
+GPG_ENABLE=true
+GPG_REAL_NAME="Autogenerated Key"
+GPG_COMMENT="WARNING: MISP AutoGenerated Key consider this Key VOID!"
+GPG_EMAIL="admin@admin.local"
+GPG_KEY_LENGTH=3072
+GPG_PASS=
+
+[MISP]
+MISP_GIT_TAG_CORE_ENABLE=false
+MISP_GIT_TAG_CORE=v2.4.185
+MISP_GIT_TAG_MODULE_ENABLE=false
+MISP_GIT_TAG_MODULE=v2.4.185
+WWW_USER=wwwrun
+SUDO_WWW="sudo sudo -H -u \${WWW_USER}"
+SALT_PASS=
+PATH_TO_MISP="/srv/www/MISP"
+PATH_TO_CAKE="\${PATH_TO_MISP}/app/Console/cake"
+
+[MISP-CONFIG]
+
+[PHP]
+PHP_FPM=false
+PHP_PECL=true
+PHP_ETC_BASE="/etc/php7"
+
+[SWAP]
+SWAP_ENABLE=true
+SWAP_FILE=/swapfile
+SWAP_SIZE=3
+
+[REDIS]
+REDIS_HOST="127.0.0.1"
+REDIS_PORT=6379
+REDIS_DATA=13
+REDIS_PASS=
+
+[SUPERVISOR]
+SUPERVISOR_ENABLE=true
+SUPERVISOR_HOST="127.0.0.1"
+SUPERVISOR_PORT=9001
+SUPERVISOR_USER=supervisor
+SUPERVISOR_PASS=
+
+[DB]
+DB_ADMIN_HOST=localhost
+DB_ADMIN_PORT=3306
+DB_ADMIN_USE=root
+DB_ADMIN_PASS=
+
+DB_MISP_DATABASE=misp
+DB_MISP_PREFIX=
+DB_MISP_USE=user_misp
+DB_MISP_PASS=
+EOF
+}
+
+function adminGeneratingPass () {
+  space && loginfo "[ADMIN][.ENV][PASS]" "Gerando as senhas do arquivo ${COLOR_RED}.ENV${COLOR_NC}."
+  sudo sed -i "s/^\(.*_PASS=\).*/\1$(openssl rand -hex 32)/" /admin/.env
+}
+
+function adminGeneratingExport () {
+  space && loginfo "[ADMIN][EXPORT][GENERATING]" "Gerando as variáveis temporárias pelo ${COLOR_RED}EXPORT${COLOR_NC}."
+  eval $(sudo grep -v -E "^\s*(;|$|\[|#)" /admin/.env | xargs -i echo {} | sed 's/=/=\"/;s/$/\"/')
+  # set -x ; set +x
+  #eval $(sudo grep -v -E "^\s*(;|$|\[|#)" /admin/.env | xargs -I {} echo export \'{}\')
+  #sudo grep -v -E "^\s*(;|$|\[|#)" /admin/.env | while read line; do export $line ; done
+  # unset $(sudo egrep -v "^\s*(;|$|\[|#)" /admin/.env | cut -f1 -d'=')
+
+}
+
+function adminConfig () {
+  adminDirectory
+  adminFileEnv
+  adminFileEnvConfig
+  adminGeneratingPass
+  adminGeneratingExport
+}
+###################### FIM CONFIG ADMIN --------------------------------------------------
+
+###################### CONFIGURAÇÕES LOCAIS ----------------------------------------------
+function localTimeZone () {
+  space && loginfo "[LOCAL][TIMEZONE]" "Definindo o ${COLOR_RED}TIMEZONE - America/Sao_Paulo${COLOR_NC} e aplicando."
+  sudo timedatectl set-timezone America/Sao_Paulo
+  sudo sed -i "s/^#\(NTP=\).*/\1a.ntp.br/g" /etc/systemd/timesyncd.conf
+  sudo sed -i "s/^#\(FallbackNTP=\).*/\1a.ntp.br/g" /etc/systemd/timesyncd.conf
+  sudo timedatectl set-ntp true
+  sudo sudo hwclock --systohc --localtime
+  sudo service systemd-timesyncd restart
+
+  sudo localectl set-locale LC_TIME=pt_BR.UTF-8
+
+  export LC_TIME="pt_BR.UTF-8"
+
+}
+
+function localSetHostname () {
+  if [[ ! -z ${ADMIN_HOSTNAME} ]]; then  
+    space && loginfo "[LOCAL][HOSTNAME]" "Configurando o HOSTNAME para ${COLOR_RED}${ADMIN_HOSTNAME}${COLOR_NC}."
+    sudo hostnamectl set-hostname ${ADMIN_HOSTNAME}
+  fi  
+}
+
+function localHosts () {
+  space && loginfo "[LOCAL][HOSTS]" "Configurando o HOSTS ${COLOR_RED}${FQDN}${COLOR_NC}."
+  echo "127.0.0.1       ${ADMIN_SITE} ${ADMIN_HOSTNAME}" | sudo tee -a /etc/hosts
+}
+
+function localRcLocal () {
+  space && loginfo "[LOCAL][RC.LOCAL]" "Criando o arquivo RC.LOCAL, caso não exista."
+  # Criação do arquivo /etc/rc.local.
+  echo '#!/bin/sh -e' | sudo tee /etc/rc.local
+  echo 'exit 0' | sudo tee -a /etc/rc.local
+  # Aplicando as permissões de execução do arquivo /etc/rc.local.
+  sudo chmod u+x /etc/rc.local
+}
+
+function localSwap () {
+  if [[ ${SWAP_ENABLE} == true ]]; then
+    if [[ ! $(sudo swapon -v) ]]; then
+      space && loginfo "[LOCAL][SWAP]" "Configurnado ${COLOR_YELLOW}SWAP${COLOR_NC}."
+
+      sudo touch ${SWAP_FILE}
+      [[ ${SUSE_SP} == '15.5' ]] && sudo chattr +C ${SWAP_FILE}
+      sudo fallocate -l ${SWAP_SIZE}G ${SWAP_FILE}
+      sudo chmod 0600 ${SWAP_FILE}
+      sudo mkswap ${SWAP_FILE}
+      sudo swapon ${SWAP_FILE}
+      echo "${SWAP_FILE} none swap defaults 0 0" | sudo tee -a /etc/fstab
+
+      sudo swapon --show
+      sudo free -th
+    else
+      space && loginfo "[LOCAL][SWAP]" "FALHA: ${COLOR_YELLOW}SWAP${COLOR_NC} existente."
+
+      sudo swapon --show
+      sudo free -th
+    fi
+  fi
+}
+
+function localConfig () {
+  localTimeZone
+  localSetHostname
+  localHosts
+  localRcLocal
+  localSwap
+}
+###################### FIM CONFIGURAÇÕES LOCAIS ------------------------------------------
+
+
+###################### REPOSITÓRIOS E DEPENFÊNCIAS ---------------------------------------
+function localRepo () {
+  space && loginfo "[LOCAL][REPO]" "Configurnado ${COLOR_RED}REPOSITÓRIOS${COLOR_NC}."
+
+  REPO=(sle-module-desktop-applications/${SUSE_SP}/x86_64
+    sle-module-development-tools/${SUSE_SP}/x86_64
+    PackageHub/${SUSE_SP}/x86_64
+    sle-module-python3/${SUSE_SP}/x86_64
+    sle-module-legacy/${SUSE_SP}/x86_64
+    sle-module-web-scripting/${SUSE_SP}/x86_64
+  )
+
+  # for REP in "${REPO[@]}"; do loginfo "[REPO]" "${COLOR_BLUE}${REP}${COLOR_NC}." && sudo SUSEConnect -p ${REP}; done
+  for REP in "${REPO[@]}"; do
+    [[ -z $(sudo zypper lr -d | cut -d"|" -f9 | grep -i "$( echo ${REP} | cut -d'/' -f1)") ]] && sudo SUSEConnect -p ${REP}
+  done
+   
+}
+
+# Instala DEPENDÊNCIA
+function localInstallDep (){
+  space && loginfo "[DEPE]" "Instalando ${COLOR_BLUE}DEPENDÊNCIAS${COLOR_NC}."
+
+  loginfo "[DEPE][CORE]" "Instalando ${COLOR_RED}NetworkManager${COLOR_NC}."
+  sudo zypper in -y NetworkManager
+
+  loginfo "[DEPE][CORE]" "Instalando ${COLOR_RED}DEPENDÊNCIAS${COLOR_NC}."
+  sudo zypper in -y \
+    gcc make \
+    git zip unzip \
+    nano \
+    cntlm gpg2 openssl curl unbound bind-utils \
+    moreutils \
+    redis \
+    glibc-locale \
+    libxslt-devel zlib-devel libgpg-error-devel libffi-devel libfuzzy-devel libxml2-devel libassuan-devel
+
+  loginfo "[DEPE][GPG]" "Instalando ${COLOR_RED}GPG${COLOR_NC}."
+  sudo zypper in -y haveged
+
+  loginfo "[DEPE][HTTPD]" "Instalando ${COLOR_RED}HTTPD${COLOR_NC}."
+  sudo zypper in -y httpd apache2-mod_php7
+
+  if [[ ${SUSE_SP} == '15.4' ]]; then
+    loginfo "[DEPE][PYTHON]" "Instalando ${COLOR_RED}PYTHON 310${COLOR_NC}."
+    sudo zypper in -y \
+      python310 \
+      python310-devel \
+      python310-pip \
+      python310-setuptools
+  fi
+
+  if [[ ${SUSE_SP} == '15.5' ]]; then
+    loginfo "[DEPE][PYTHON]" "Instalando ${COLOR_RED}PYTHON 311${COLOR_NC}."
+    sudo zypper in -y \
+      python311 \
+      python311-devel \
+      python311-pip \
+      python311-wheel \
+      python311-urllib3 \
+      python311-idna \
+      python311-lxml \
+      python311-ply \
+      python311-virtualenv \
+      python311-cryptography
+  fi
+
+    loginfo "[DEPE][PHP]" "Instalando ${COLOR_RED}PHP 7${COLOR_NC}."
+    sudo zypper in -y \
+      php7 \
+      php7-cli \
+      php7-gd \
+      php7-mysql \
+      php7-bcmath \
+      php7-opcache \
+      php7-intl \
+      php7-zip \
+      php7-pear \
+      php7-redis \
+      php-composer2 \
+      php7-fileinfo \
+      php7-pcntl \
+      php7-gmp \
+      php7-pecl \
+      php7-APCu \
+      php7-posix \
+      php7-xdebug
+
+  if [[ ${SUPERVISOR_ENABLE} == true  ]]; then
+    loginfo "[CONFIG][SUPERVISOR]" "Configurando: ${COLOR_RED}SUPERVISOR${COLOR_NC}."
+    sudo zypper in -y supervisor
+
+    loginfo "[DEPE][SUPERVISOR-PIP]" "Instalando ${COLOR_RED}PIP SUPERVISOR${COLOR_NC}."
+    if [[ ! -z ${AMDIN_PROXY} ]]; then
+      sudo pip3 install --proxy=${AMDIN_PROXY} -U supervisor
+    else
+      sudo pip3 install -U supervisor
+      # sudo python3 -m pip install --no-warn-script-location supervisor
+      # sudo pip3 uninstall supervisor -y
+    fi
+  fi
+  
+  [[ ${PHP_FPM} == true ]] && loginfo "[DEPE][PHP_FPM]" "Instalando ${COLOR_RED}PHP_FPM${COLOR_NC}." && sudo zypper in -y php7-fpm
+
+  loginfo "[DEPE][MSQL]" "Instalando ${COLOR_RED}MARIADB${COLOR_NC}."
+  sudo zypper in -y \
+      mariadb \
+      mariadb-server
+
+}
+
+function repoDep () {
+  localRepo
+  localInstallDep
+}
+###################### FIM REPOSITÓRIOS E DEPENFÊNCIAS -----------------------------------
+
+###################### CONFIG DEPENDÊNCIAS -----------------------------------------------
+function configGpg () {
+  space && loginfo "[CONFIG][GPG]" "Configurando: ${COLOR_RED}GPG${COLOR_NC}."
+  sudo systemctl enable --now haveged.service
+}
+
+function configPyton () {
+  space && loginfo "[CONFIG][PYTHON]" "Configurando: ${COLOR_RED}PYTHON 11${COLOR_NC}."
+
+  VERSION_PYTHON= [[ ${SUSE_SP} == '15.4' ]] && echo "3.10" | echo "3.11" 
+
+  [[ -e "/usr/bin/python${VERSION_PYTHON}" ]] && sudo rm /usr/bin/python3 && sudo ln -s /usr/bin/python${VERSION_PYTHON} /usr/bin/python3
+  [[ ! -e "/usr/bin/python" ]] && sudo ln -s /usr/bin/python3 /usr/bin/python
+
+  [[ ! $(sudo update-alternatives --list python) ]] && sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+  readlink -f /usr/bin/python | grep python3 || sudo alternatives --set python /usr/bin/python3
+}
+
+function configRedis () {
+  space && loginfo "[CONFIG][REDIS]" "Configurando: ${COLOR_RED}REDIS${COLOR_NC}."
+
+  sudo cp -a /etc/redis/default.conf.example /etc/redis/default.conf
+  sudo cp -a /etc/redis/sentinel.conf.example /etc/redis/sentinel.conf
+
+  sudo sed -i "s/^\(bind\ \).*/\1${REDIS_HOST} -::1/" /etc/redis/default.conf
+  sudo sed -i "s/^\(appendonly\ \).*/\1yes/" /etc/redis/default.conf
+  sudo sed -i 's/^\(appendfilename\ \).*/\1\"appendonly.aof\"/' /etc/redis/default.conf
+
+  [[ ! -z ${REDIS_PASS} ]] && sudo sed -i "s/^#\ \(requirepass\ \).*/\1${REDIS_PASS}/" /etc/redis/default.conf
+
+  loginfo "[CONFIG][REDIS]" "Configurando: ${COLOR_RED}vm.overcommit_memory${COLOR_NC}."
+  [[ ! "$(grep vm.overcommit_memory /etc/rc.local)" ]] && sudo sed -i -e '$i \sysctl vm.overcommit_memory=1\n' /etc/rc.local
+
+  sudo chown -R redis:redis /etc/redis
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now redis@default
+}
+
+function configPhp () {
+  space && loginfo "[CONFIG][PHP]" "Configurando: ${COLOR_RED}PHP 7${COLOR_NC}."
+
+  loginfo "[CONFIG][PHP][REDIS]" "Configurando: ${COLOR_RED}PHP 7 - REDIS.INI${COLOR_NC}."
+  # REDIS config
+  sudo sed -i "s|.*redis.session.locking_enabled = .*|redis.session.locking_enabled = 1|" ${PHP_ETC_BASE}/conf.d/redis.ini
+  sudo sed -i "s|.*redis.session.lock_expire = .*|redis.session.lock_expire = 30|" ${PHP_ETC_BASE}/conf.d/redis.ini
+  sudo sed -i "s|.*redis.session.lock_wait_time = .*|redis.session.lock_wait_time = 50000|" ${PHP_ETC_BASE}/conf.d/redis.ini
+  sudo sed -i "s|.*redis.session.lock_retries = .*|redis.session.lock_retries = 30|" ${PHP_ETC_BASE}/conf.d/redis.ini
+
+  for FILE in ${PHP_ETC_BASE}/*/php.ini
+    do
+      [[ -e ${FILE} ]] || break
+      loginfo "[CONFIG][PHP][*.INI]" "Configurando: ${COLOR_RED}${FILE}${COLOR_NC}."
+
+      sudo cp -a ${FILE} ${FILE}_old
+
+      sudo sed -i "s/memory_limit = .*/memory_limit = 2048M/" "${FILE}"
+      sudo sed -i "s/max_execution_time = .*/max_execution_time = 300/" "${FILE}"
+      sudo sed -i "s/upload_max_filesize = .*/upload_max_filesize = 50M/" "${FILE}"
+      sudo sed -i "s/post_max_size = .*/post_max_size = 50M/" "${FILE}"
+
+      sudo sed -i "s|.*session.use_strict_mode = .*|session.use_strict_mode = 1|" "${FILE}"
+      sudo sed -i "s|.*session.serialize_handler = .*|session.serialize_handler = php|" "${FILE}"
+      sudo sed -i "s|.*session.sid_length = .*|session.sid_length = 32|" "${FILE}"
+      sudo sed -i "s|.*session.sid_bits_per_character = .*|session.sid_bits_per_character = 5|" "${FILE}"
+
+      sudo sed -i '/expose_php =/ s/.*/expose_php = Off/' "${FILE}"
+
+      sudo sed -i "s|^session.save_handler = .*|session.save_handler = redis|" "${FILE}"
+      sudo sed -i "s|^session.save_path = .*|session.save_path = 'tcp://${REDIS_HOST}:${REDIS_PORT}'|" "${FILE}"
+      [[ ! -z ${REDIS_PASS} ]] && sudo sed -i "s|.*session.save_path = .*|session.save_path = 'tcp://${REDIS_HOST}:${REDIS_PORT}?auth=${REDIS_PASS}'|" "${FILE}"
+      # sudo sed -i "s|^session.save_handler = .*|session.save_handler = files|" "${FILE}"
+      # sudo sed -i "s|^session.save_path = .*|session.save_path = '/var/lib/php7'|" "${FILE}"
+    done 
+}
+
+
+function configPhpPecl () {
+  if [[ ${PHP_PECL} == true  ]]; then
+    space && loginfo "[CONFIG][PHP][PECL]" "Configurando: ${COLOR_RED}PHP PECL${COLOR_NC}."
+
+    sudo zypper in -y \
+          librdkafka-devel \
+          libbrotli-devel \
+          php7-devel
+
+    sudo cp -a /usr/lib64/libfuzzy.* /usr/lib
+
+    sudo pecl channel-update pecl.php.net
+
+    sudo pecl install ssdeep 
+    sudo pecl install rdkafka 
+    sudo pecl install simdjson
+    sudo pecl install brotli
+
+    # /usr/lib64/php7/extensions/
+    loginfo "[CONFIG][PHP][EXTENSIONS]" "Configurando: ${COLOR_RED}PHP EXTENSIONS${COLOR_NC}."
+    set -- "ssdeep" "rdkafka" "brotli" "simdjson"
+    for mod in "$@"; do
+      echo "extension=${mod}.so" | sudo tee "${PHP_ETC_BASE}/conf.d/${mod}.ini"
+    done;
+  fi
+}
+
+
+function configPhpFmp () {
+  if [[ ${PHP_FPM} == true  ]]; then
+    space && loginfo "[CONFIG][PHP][FMP]" "Configurando: ${COLOR_RED}PHP FMP${COLOR_NC}."
+  fi
+}
+
+function configSupervisor () {
+  if [[ ${SUPERVISOR_ENABLE} == true  ]]; then
+    space && loginfo "[CONFIG][SUPERVISOR]" "Configurando: ${COLOR_RED}SUPERVISOR${COLOR_NC}."
+
+    echo "
+[supervisord]
+user=root
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[inet_http_server]
+; port=${SUPERVISOR_HOST}:${SUPERVISOR_PORT}
+port=*:${SUPERVISOR_PORT}
+username=${SUPERVISOR_USER}
+password=${SUPERVISOR_PASS}
+
+" | sudo tee /etc/supervisord.d/10-supervisor.conf
+
+    sudo systemctl enable supervisord.service
+    sudo systemctl start supervisord.service
+    sudo systemctl restart supervisord.service
+  fi
+}
+
+function configCert () {
+  if [[ ${ADMIN_CERT_ENABLE} == true  ]]; then
+    space && loginfo "[CONFIG][BRB]" "Configurando: ${COLOR_RED}CERT BRB${COLOR_NC}."
+  fi
+}
+
+function configDep () {
+  configGpg
+  configPyton
+  configRedis
+  configPhp
+  configPhpPecl
+  configPhpFmp
+  configSupervisor
+  configCert
+}
+###################### FIM CONFIG DEPENDÊNCIAS -------------------------------------------
+
+
+###################### CONFIG DEP MISP ---------------------------------------------------
+function configRepoMISP (){
+  space && loginfo "[MISP][REPO]" "Configurando: ${COLOR_RED}REPO MISP${COLOR_NC}."
+
+  if [[ ! -d ${PATH_TO_MISP} ]]; then
+    loginfo "[MISP][REPO]" "Criando repositório."
+
+    sudo mkdir ${PATH_TO_MISP}
+    sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}
+    cd ${PATH_TO_MISP}
+
+    loginfo "[MISP][REPO]" "Baixando: ${COLOR_RED}REPOSITÓTIO e MÓDULOS${COLOR_NC}."
+
+    # Fetch submodules
+    if [[ ${MISP_GIT_TAG_CORE_ENABLE} == true  ]] && [[ ! -z ${MISP_GIT_TAG_CORE} ]]; then
+      loginfo "[MISP][REPO]" "Criando repositório - TAG: ${COLOR_RED}${GIT_CORE_TAG}${COLOR_NC}."
+      ${SUDO_WWW} git clone --branch "${CORE_TAG}" --depth 1 https://github.com/MISP/MISP.git ${PATH_TO_MISP} 
+    else
+      loginfo "[MISP][REPO]" "Criando repositório MASTER."
+      ${SUDO_WWW} git clone https://github.com/MISP/MISP.git ${PATH_TO_MISP}
+    fi
+
+    ${SUDO_WWW} git submodule sync
+    ${SUDO_WWW} git -C ${PATH_TO_MISP} submodule update --progress --init --recursive
+    ${SUDO_WWW} git -C ${PATH_TO_MISP} submodule foreach --recursive git config core.filemode false
+    ${SUDO_WWW} git -C ${PATH_TO_MISP} config core.filemode false
+  else
+    loginfo "[MISP][REPO]" "Repositório: ${COLOR_RED}JÁ EXISTE${COLOR_NC}."
+  fi
+}
+
+function configRepoMISPDep (){
+  space && loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}DEPEDÊNCIAS${COLOR_NC}."
+
+  if [[ -d ${PATH_TO_MISP} ]]; then
+    cd ${PATH_TO_MISP}
+
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Create a python3 virtualenv${COLOR_NC}."
+    # Create a python3 virtualenv
+    [[ -e $(which virtualenv 2>/dev/null) ]] && ${SUDO_WWW} virtualenv -p python3 ${PATH_TO_MISP}/venv
+    ${SUDO_WWW} python3 -m venv ${PATH_TO_MISP}/venv
+
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}make pip happy${COLOR_NC}."
+
+    sudo mkdir /srv/www/.cache
+    sudo chown ${WWW_USER}:${WWW_USER} /srv/www/.cache
+
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Install pip setuptools${COLOR_NC}."
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install -U pip setuptools
+    #sudo pip3 install -U pip setuptools
+
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip --no-cache-dir install --disable-pip-version-check -r ${PATH_TO_MISP}/requirements.txt
+    #sudo pip3 --no-cache-dir install --disable-pip-version-check -r ${PATH_TO_MISP}/requirements.txt
+
+    UMASK=$(umask)
+    umask 0022
+
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing python-cybox${COLOR_NC}."
+    cd ${PATH_TO_MISP}/app/files/scripts/python-cybox
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install .
+    #sudo pip3 install
+
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing python-stix${COLOR_NC}."
+    cd ${PATH_TO_MISP}/app/files/scripts/python-stix
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install .
+    #sudo pip3 install
+
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing maec${COLOR_NC}."
+    cd ${PATH_TO_MISP}/app/files/scripts/python-maec
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install .
+    #sudo pip3 install
+
+    # Install misp-stix
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing misp-stix${COLOR_NC}."
+    cd ${PATH_TO_MISP}/app/files/scripts/misp-stix
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install .
+    #sudo pip3 install
+
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing mixbox${COLOR_NC}."
+    cd ${PATH_TO_MISP}/app/files/scripts/mixbox
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install .
+    #sudo pip3 install
+
+    # install PyMISP
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing PyMISP${COLOR_NC}."
+    cd ${PATH_TO_MISP}/PyMISP
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install .
+    #sudo pip3 install
+
+    # install pydeep
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing pydeep${COLOR_NC}."
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install git+https://github.com/kbandla/pydeep.git
+    #sudo pip3 install git+https://github.com/kbandla/pydeep.git
+
+    # install lief
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing lief${COLOR_NC}."
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install lief
+    #sudo pip3 install lief
+
+    # install python-magic
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing python-magic${COLOR_NC}."
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install python-magic
+    #sudo pip3 install python-magic
+
+    # install plyara
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing plyara${COLOR_NC}."
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install plyara
+    #sudo pip3 install plyara
+
+    # install zmq needed by mispzmq
+    loginfo "[MISP][REPO][DEP]" "Configurando: ${COLOR_RED}Installing zmq needed by mispzmq${COLOR_NC}."
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install zmq
+    #sudo pip3 install zmq
+
+    umask $UMASK
+  else
+    loginfo "[MISP][REPO][DEP]" "Diretório: ${COLOR_RED}INEXISTENTE${COLOR_NC}."
+  fi
+}
+
+function installCake (){
+  space && loginfo "[MISP][REPO][CAKE]" "Instalando: ${COLOR_RED}CAKE${COLOR_NC}."
+
+  sudo mkdir -p /srv/www/.composer ; sudo chown ${WWW_USER}:${WWW_USER} /srv/www/.composer
+  ${SUDO_WWW} sh -c "cd ${PATH_TO_MISP}/app ; php composer.phar config --no-interaction allow-plugins.composer/installers true"
+  ${SUDO_WWW} sh -c "cd ${PATH_TO_MISP}/app ; php composer.phar install --no-dev"  
+
+  ${SUDO_WWW} sh -c "cd ${PATH_TO_MISP}/app ; php composer.phar require --with-all-dependencies --no-interaction supervisorphp/supervisor:^4.0 \
+    guzzlehttp/guzzle \
+    php-http/message \
+    php-http/message-factory \
+    lstrojny/fxmlrpc \
+    elasticsearch/elasticsearch \
+    aws/aws-sdk-php \
+    jakub-onderka/openid-connect-php" 
+
+  # To use the scheduler worker for scheduled tasks, do the following:
+  ${SUDO_WWW} cp -fa ${PATH_TO_MISP}/INSTALL/setup/config.php ${PATH_TO_MISP}/app/Plugin/CakeResque/Config/config.php
+
+  sudo sed -i  "/'host' / s/\(=> \).*/\1\'${REDIS_HOST}\',/" ${PATH_TO_MISP}/app/Plugin/CakeResque/Config/config.php
+  [[ ! -z ${REDIS_PASS} ]] && sudo sed -i  "/'password' / s/\(=> \).*/\1\'${REDIS_PASS}\'/" ${PATH_TO_MISP}/app/Plugin/CakeResque/Config/config.php
+}
+
+function permissions () {
+  space && loginfo "[MISP][REPO][PER]" "Configurando: ${COLOR_RED}PERMISSIONS${COLOR_NC}."
+
+  sudo chown -R ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}
+  sudo chmod -R g+r,o= ${PATH_TO_MISP}
+  sudo chmod -R 750 ${PATH_TO_MISP}
+  sudo chmod -R g+xws ${PATH_TO_MISP}/app/tmp
+  sudo chmod -R g+ws ${PATH_TO_MISP}/app/files
+  sudo chmod -R g+ws ${PATH_TO_MISP}/app/files/scripts/tmp
+  sudo chmod -R g+rw ${PATH_TO_MISP}/venv
+  sudo chmod -R g+rw ${PATH_TO_MISP}/.git
+  sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/files
+  sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/files/terms
+  sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/files/scripts/tmp
+  sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/Plugin/CakeResque/tmp
+  sudo chown -R ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/Config
+  sudo chown -R ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/tmp
+  #sudo chown -R ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/webroot/img/orgs
+  sudo chown -R ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/webroot/img/custom
+
+  #sudo touch ${PATH_TO_MISP}/.git/ORIG_HEAD && sudo chmod 0600 ${PATH_TO_MISP}/.git/ORIG_HEAD && sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/.git/ORIG_HEAD
+}
+
+function prepareDB () {
+  space && loginfo "[MISP][DB]" "Configurando: ${COLOR_RED}BANCO DE DADOS${COLOR_NC}."
+
+  # Enable, start and secure your mysql database server
+  sudo systemctl enable --now mariadb.service
+  echo [mysqld] |sudo tee /etc/my.cnf.d/bind-address.cnf
+  echo bind-address=127.0.0.1 |sudo tee -a /etc/my.cnf.d/bind-address.cnf
+  sudo systemctl restart mariadb
+
+  # Kill the anonymous users
+  sudo mysql -h ${DB_ADMIN_HOST} -e "DROP USER IF EXISTS ''@'localhost'"
+
+  # Because our hostname varies we'll use some Bash magic here.
+  sudo mysql -h ${DB_ADMIN_HOST} -e "DROP USER IF EXISTS ''@'$(hostname)'"
+
+  # Kill off the demo database
+  sudo mysql -h ${DB_ADMIN_HOST} -e "DROP DATABASE IF EXISTS test"
+
+  # No root remote logins
+  sudo mysql -h ${DB_ADMIN_HOST} -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1')"
+
+  # Make sure that NOBODY can access the server without a password
+  sudo mysqladmin -h ${DB_ADMIN_HOST} -u "${DB_ADMIN_USE}" password "${DB_ADMIN_PASS}"
+
+  # Make our changes take effect
+  sudo mysql -h ${DB_ADMIN_HOST} -u "${DB_ADMIN_USE}" -p"${DB_ADMIN_PASS}" -e "FLUSH PRIVILEGES"
+
+  sudo mysql -h ${DB_ADMIN_HOST} -u "${DB_ADMIN_USE}" -p"${DB_ADMIN_PASS}" -e "CREATE DATABASE ${DB_MISP_DATABASE};"
+
+  sudo mysql -h ${DB_ADMIN_HOST} -u "${DB_ADMIN_USE}" -p"${DB_ADMIN_PASS}" -e "CREATE USER '${DB_MISP_USE}'@'localhost' IDENTIFIED BY '${DB_MISP_PASS}';"
+
+  sudo mysql -h ${DB_ADMIN_HOST} -u "${DB_ADMIN_USE}" -p"${DB_ADMIN_PASS}" -e "GRANT USAGE ON *.* to '${DB_MISP_USE}'@'localhost';"
+
+  sudo mysql -h ${DB_ADMIN_HOST} -u "${DB_ADMIN_USE}" -p"${DB_ADMIN_PASS}" -e "GRANT ALL PRIVILEGES on ${DB_MISP_DATABASE}.* to '${DB_MISP_USE}'@'localhost';"
+
+  sudo mysql -h ${DB_ADMIN_HOST} -u "${DB_ADMIN_USE}" -p"${DB_ADMIN_PASS}" -e "FLUSH PRIVILEGES;"
+
+  # Import the empty MISP database from MYSQL.sql
+  ${SUDO_WWW} cat ${PATH_TO_MISP}/INSTALL/MYSQL.sql | mysql -h ${DB_ADMIN_HOST} -u "${DB_MISP_USE}" -p"${DB_MISP_PASS}" ${DB_MISP_DATABASE}
+}
+
+function configMISPFiles () {
+  space && loginfo "[MISP][CONFIG][FILES]" "Configurando: ${COLOR_RED}FILES${COLOR_NC}."
+
+  # There are 4 sample configuration files in ${PATH_TO_MISP}/app/Config that need to be copied
+  ${SUDO_WWW} cp -a ${PATH_TO_MISP}/app/Config/bootstrap.default.php ${PATH_TO_MISP}/app/Config/bootstrap.php
+  ${SUDO_WWW} cp -a ${PATH_TO_MISP}/app/Config/database.default.php ${PATH_TO_MISP}/app/Config/database.php
+  ${SUDO_WWW} cp -a ${PATH_TO_MISP}/app/Config/core.default.php ${PATH_TO_MISP}/app/Config/core.php
+  ${SUDO_WWW} cp -a ${PATH_TO_MISP}/app/Config/config.default.php ${PATH_TO_MISP}/app/Config/config.php
+
+  echo "<?php
+  class DATABASE_CONFIG {
+          public \$default = array(
+                  'datasource' => 'Database/Mysql',
+                  'persistent' => false,
+                  'host' => '${DB_ADMIN_HOST}',
+                  'login' => '${DB_MISP_USE}',
+                  'port' => ${DB_ADMIN_PORT},
+                  'password' => '${DB_MISP_PASS}',
+                  'database' => '${DB_MISP_DATABASE}',
+                  'prefix' => '${DB_MISP_PREFIX}'',
+                  'encoding' => 'utf8',
+          );
+  }" | ${SUDO_WWW} tee ${PATH_TO_MISP}/app/Config/database.php
+
+  loginfo "[MISP][CONFIG][USER]" "Configurando: ${COLOR_RED}USER${COLOR_NC}."
+  sudo sed -i "/'osuser'/s/\(=>\ \).*/\1\'${WWW_USER}\',/" /srv/www/MISP/app/Config/config.php
+
+  loginfo "[MISP][CONFIG][SALT]" "Configurando: ${COLOR_RED}SALT${COLOR_NC}."
+  sudo sed -i "/'salt'/ s/\(=>\ \).*/\1\'${SALT}\',/" /srv/www/MISP/app/Config/config.php
+
+  # and make sure the file permissions are still OK
+  sudo chown -R ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/Config
+  sudo chmod -R 750 ${PATH_TO_MISP}/app/Config
+}
+
+function logRotation (){
+  space && loginfo "[MISP][CONFIG][LOGROTATION]" "Configurando: ${COLOR_RED}LOGROTATION${COLOR_NC}."
+
+  sudo cp ${PATH_TO_MISP}/INSTALL/misp.logrotate /etc/logrotate.d/misp
+  sudo chmod 0640 /etc/logrotate.d/misp
+}
+
+function configOpenSSL (){
+  if [[ ${OPENSSL_ENABLE} == true  ]]; then
+    space && loginfo "[MISP][CONFIG][OPENSSL]" "Configurando: ${COLOR_RED}OPENSSL${COLOR_NC}."
+
+    [[ ! -f "/etc/pki/tls" ]] && sudo mkdir -p /etc/pki/tls/{private,certs}
+    # This will take a rather long time, be ready. (13min on a VM, 8GB Ram, 1 core)
+    if [[ ! -e "${ADMIN_CERT_DEST_PER}" ]]; then
+      sudo openssl dhparam -out ${ADMIN_CERT_DEST_PER} 4096
+    fi
+
+    sudo openssl genrsa \
+        -des3 \
+        -passout pass:xxxx \
+        -out /tmp/${ADMIN_SITE}.key 4096
+
+    sudo openssl rsa \
+        -passin pass:xxxx \
+        -in /tmp/${ADMIN_SITE}.key \
+        -out ${ADMIN_CERT_DEST_KEY}
+
+    sudo rm /tmp/${ADMIN_SITE}.key
+
+    sudo openssl req -new \
+        -subj "/C=${OPENSSL_C}/ST=${OPENSSL_ST}/L=${OPENSSL_L}/O=${OPENSSL_O}/OU=${OPENSSL_OU}/CN=${OPENSSL_CN}/emailAddress=${OPENSSL_EMAILADDRESS}" \
+        -key ${ADMIN_CERT_DEST_KEY} \
+        -out ${ADMIN_CERT_DEST_CSR}
+
+    sudo openssl x509 \
+      -req -days 365 \
+      -in ${ADMIN_CERT_DEST_CSR} \
+      -signkey ${ADMIN_CERT_DEST_KEY} \
+      -out ${ADMIN_CERT_DEST_CRT}
+
+    sudo ln -s ${ADMIN_CERT_DEST_CSR} ${ADMIN_CERT_DEST_CRT_CHAIN}
+
+    cat ${ADMIN_CERT_DEST_PER} | sudo tee -a ${ADMIN_CERT_DEST_CRT}   
+  fi
+}
+
+function setupGnuPG () {
+  if [[ ${GPG_ENABLE} == true  ]]; then
+    loginfo "[MISP][CONFIG][GnuPG]" "Configurando: ${COLOR_RED}GnuPG${COLOR_NC}."
+
+    if [ ! -f "${PATH_TO_MISP}/.gnupg/trustdb.gpg" ]; then
+      # Generate a GPG encryption key.
+      cat >/tmp/gen-key-script <<GPGEOF
+      %echo Generating a default key
+      Key-Type: default
+      Key-Length: ${GPG_KEY_LENGTH}
+      Subkey-Type: default
+      Name-Real: ${GPG_REAL_NAME}
+      Name-Comment: ${GPG_COMMENT}
+      Name-Email: ${GPG_EMAIL}
+      Expire-Date: 0
+      Passphrase: ${GPG_PASS}
+      # Do a commit here, so that we can later print "done"
+      %commit
+      %echo done
+GPGEOF
+  
+      sudo mkdir -p ${PATH_TO_MISP}/.gnupg
+      sudo gpg --homedir ${PATH_TO_MISP}/.gnupg --gen-key --batch /tmp/gen-key-script
+      sudo rm -f /tmp/gen-key-script
+    else
+      loginfo "[MISP][CONFIG][GnuPG]" "... found pre-generated GPG key in ${COLOR_RED}${PATH_TO_MISP}/.gnupg${COLOR_NC}."
+    fi
+
+
+    if [ ! -f ${PATH_TO_MISP}/app/webroot/gpg.asc ]; then
+      loginfo "[MISP][CONFIG][GPG.ASC]" "... exporting GPG key"
+      sudo gpg --homedir ${PATH_TO_MISP}/.gnupg --export --armor ${GPG_EMAIL} | sudo tee ${PATH_TO_MISP}/app/webroot/gpg.asc
+    else
+      loginfo "[MISP][CONFIG][GPG.ASC]" "... found exported key ${COLOR_RED}${PATH_TO_MISP}/app/webroot/gpg.asc${COLOR_NC}."
+    fi
+
+    # Fix permissions
+    sudo chown -R ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/.gnupg
+    sudo find ${PATH_TO_MISP}/.gnupg -type f -exec chmod 600 {} \;
+    sudo find ${PATH_TO_MISP}/.gnupg -type d -exec chmod 700 {} \;
+    sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}/app/webroot/gpg.asc
+  fi
+}
+
+function configApacheFiles (){
+  cat <<EOF | sudo tee /srv/www/htdocs/401.shtml > /dev/null
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <style>
+        html, body { width: 100%; margin: 0; padding: 0; }
+        body { font-family: 'Calibri', sans-serif; font-size: 16px; color: #ebebeb; background-color: #151515; text-align: center; margin-top: 10% }
+        h2 { text-transform: uppercase; font-weight: lighter; font-size: 45px; margin: 5px 0; }
+        p { margin: 0; }
+        br { margin: 5px; }
+        a { color: white }
+        .requestId { font-size: 12px; color: gray }
+    </style>
+    <title>Permission denied</title>
+</head>
+<body>
+    <h2>Permission denied.</h2>
+    <br>
+    <p>Lamentamos, mas você não tem acesso a esta página.{% if SUPPORT_EMAIL %} Se você acha que deveria conseguir acessar esta página, entre em contato conosco em <a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a>{% endif %}.</p>
+    <br>
+    <p class="requestId">Request ID: <!--#echo encoding="entity" var="HTTP_X_REQUEST_ID" --></p>
+</body>
+</html>
+EOF
+
+  cat <<EOF | sudo tee /srv/www/htdocs/500.shtml > /dev/null
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <style>
+        html, body { width: 100%; margin: 0; padding: 0; }
+        body { font-family: 'Calibri', sans-serif; font-size: 16px; color: #ebebeb; background-color: #151515; text-align: center; margin-top: 10% }
+        h2 { text-transform: uppercase; font-weight: lighter; font-size: 45px; margin: 5px 0; }
+        p { margin: 0; }
+        br { margin: 5px; }
+        a { color: white }
+        .requestId { font-size: 12px; color: gray }
+    </style>
+    <title>Internal Server Error</title>
+</head>
+<body>
+    <h2>Internal Server Error</h2>
+    <br>
+    <p>O servidor está temporariamente impossibilitado de atender sua solicitação devido a um erro interno do servidor. Por favor, tente novamente mais tarde{% if SUPPORT_EMAIL %} ou entre em contato conosco em <a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a>{% endif %}.</p>
+    <br>
+    <p class="requestId">Request ID: <!--#echo encoding="entity" var="HTTP_X_REQUEST_ID" --></p>
+</body>
+</html>
+EOF
+
+  cat <<EOF | sudo tee /srv/www/htdocs/503.shtml > /dev/null
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <style>
+        html, body { width: 100%; margin: 0; padding: 0; }
+        body { font-family: 'Calibri', sans-serif; font-size: 16px; color: #ebebeb; background-color: #151515; text-align: center; margin-top: 10% }
+        h2 { text-transform: uppercase; font-weight: lighter; font-size: 45px; margin: 5px 0; }
+        p { margin: 0; }
+        br { margin: 5px; }
+        a { color: white }
+        .requestId { font-size: 12px; color: gray }
+    </style>
+    <title>Service Unavailable</title>
+</head>
+<body>
+    <h2>Service Unavailable.</h2>
+    <br>
+    <p>O servidor está temporariamente impossibilitado de atender sua solicitação devido a tempo de inatividade para manutenção ou problemas de capacidade. Por favor, tente novamente mais tarde{% if SUPPORT_EMAIL %} ou entre em contato conosco em <a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a>{% endif %}.</p>
+    <br>
+    <p class="requestId">Request ID: <!--#echo encoding="entity" var="HTTP_X_REQUEST_ID" --></p>
+</body>
+</html>
+EOF
+
+  cat <<EOF | sudo tee /srv/www/htdocs/504.shtml > /dev/null
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <style>
+        html, body { width: 100%; margin: 0; padding: 0; }
+        body { font-family: 'Calibri', sans-serif; font-size: 16px; color: #ebebeb; background-color: #151515; text-align: center; margin-top: 10% }
+        h2 { text-transform: uppercase; font-weight: lighter; font-size: 45px; margin: 5px 0; }
+        p { margin: 0; }
+        br { margin: 5px; }
+        a { color: white }
+        .requestId { font-size: 12px; color: gray }
+    </style>
+    <title>Service Unavailable</title>
+</head>
+<body>
+    <h2>Service Unavailable.</h2>
+    <br>
+    <p>O servidor está temporariamente impossibilitado de atender sua solicitação devido a tempo de inatividade para manutenção ou problemas de capacidade. Por favor, tente novamente mais tarde{% if SUPPORT_EMAIL %} ou entre em contato conosco em <a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a>{% endif %}.</p>
+    <br>
+    <p class="requestId">Request ID: <!--#echo encoding="entity" var="HTTP_X_REQUEST_ID" --></p>
+</body>
+</html>
+EOF
+
+  cat <<EOF | sudo tee /srv/www/htdocs/oidc.html > /dev/null
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <style>
+        html, body { width: 100%; margin: 0; padding: 0; }
+        body { font-family: 'Calibri', sans-serif; font-size: 16px; color: #ebebeb; background-color: #151515; text-align: center; margin-top: 10% }
+        h2 { text-transform: uppercase; font-weight: lighter; font-size: 45px; margin: 5px 0; }
+        p { margin: 0; }
+        br { margin: 5px; }
+        a { color: white }
+    </style>
+    <title>Internal Server Error</title>
+</head>
+<body>
+    <h2>Internal Server Error.</h2>
+    <br>
+    <p>O servidor está temporariamente impossibilitado de atender sua solicitação devido a um erro interno do servidor. Por favor, tente novamente mais tarde{% if SUPPORT_EMAIL %} ou entre em contato conosco em <a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a>{% endif %}.</p>
+    <p>%s %s</p>
+</body>
+</html>
+EOF
+
+  cat <<EOF | sudo tee /etc/apache2/vhosts.d/misp.conf.old > /dev/null
+ServerAdmin me@me.local 
+ServerName ${ADMIN_SITE}
+
+<VirtualHost *:80>    
+  DocumentRoot ${PATH_TO_MISP}/app/webroot 
+
+  LogLevel warn 
+  ErrorLog /var/log/apache2/${ADMIN_SITE}.http_error.log 
+  CustomLog /var/log/apache2/${ADMIN_SITE}.http_access.log combined 
+
+  ErrorDocument 401 /401.html
+  ErrorDocument 403 /401.html
+  ErrorDocument 500 /500.html
+  ErrorDocument 503 /503.html
+  ErrorDocument 504 /504.html
+  Alias /401.html /srv/www/htdocs/401.shtml
+  Alias /500.html /srv/www/htdocs/500.shtml
+  Alias /503.html /srv/www/htdocs/503.shtml
+  Alias /504.html /srv/www/htdocs/504.shtml
+
+  <Directory /srv/www/htdocs/>
+    Options +Includes
+  </Directory>
+
+  # Allow access to error page without authentication
+  <LocationMatch "/(401|500).html">
+      Satisfy any
+  </LocationMatch>
+
+  # Disable access to fpm-status
+  <Location "/fpm-status">
+      Require all denied
+  </Location>
+
+  SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=\$1
+  DirectoryIndex /index.php index.php
+
+  #<FilesMatch \.php$>
+  #    SetHandler "unix:/run/php-fpm/php-misp-fpm.sock|fcgi://localhost"
+  #    #ProxyPass "unix:/run/php-fpm/php-misp-fpm.sock|fcgi://127.0.0.1:9000"
+  #</FilesMatch>
+
+  <Directory ${PATH_TO_MISP}/app/webroot>
+      Options -Indexes +FollowSymLinks 
+      AllowOverride all 
+      Order allow,deny 
+      Allow from all 
+  </Directory>
+</VirtualHost> 
+EOF
+
+  cat <<EOF | sudo tee /etc/apache2/vhosts.d/misp.ssl.conf > /dev/null
+ServerAdmin serveradmin@misp.local
+ServerName ${ADMIN_SITE}
+
+<VirtualHost *:80>
+  #ServerAdmin serveradmin@misp.local
+  #ServerName ${ADMIN_SITE}
+
+  # In theory not needed, left for debug purposes
+  # LogLevel warn
+  # ErrorLog /var/log/apache2/${ADMIN_SITE}.http_error.log
+  # CustomLog /var/log/apache2/${ADMIN_SITE}.http_access.log combined
+
+  Header always unset "X-Powered-By"
+
+  RewriteEngine On
+  RewriteCond %{HTTPS}  !=on
+  RewriteRule ^/?(.*) https://%{SERVER_NAME}/\$1 [R,L]
+
+  ServerSignature Off
+</VirtualHost>
+
+<VirtualHost *:443>
+  #ServerAdmin me@me.local 
+  #ServerName ${ADMIN_SITE}
+
+  DocumentRoot ${PATH_TO_MISP}/app/webroot
+
+  SSLEngine On
+  SSLCertificateFile    ${ADMIN_CERT_DEST_CRT}
+  SSLCertificateKeyFile ${ADMIN_CERT_DEST_KEY}
+
+  LogLevel warn 
+  ErrorLog /var/log/apache2/${ADMIN_SITE}.ssl_error.log 
+  CustomLog /var/log/apache2/${ADMIN_SITE}.ssl_access.log combined 
+
+  ErrorDocument 401 /401.html
+  ErrorDocument 403 /401.html
+  ErrorDocument 500 /500.html
+  ErrorDocument 503 /503.html
+  ErrorDocument 504 /504.html
+  Alias /401.html /srv/www/htdocs/401.shtml
+  Alias /500.html /srv/www/htdocs/500.shtml
+  Alias /503.html /srv/www/htdocs/503.shtml
+  Alias /504.html /srv/www/htdocs/504.shtml
+
+  <Directory ${PATH_TO_MISP}/app/webroot> 
+      Options -Indexes +FollowSymLinks 
+      AllowOverride all 
+      Order allow,deny 
+      Allow from all 
+  </Directory>
+
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubdomains;"
+  Header always set X-Content-Type-Options nosniff
+  Header always set X-Frame-Options SAMEORIGIN 
+  Header always unset "X-Powered-By"
+</VirtualHost>
+EOF
+}
+
+function apacheConfig (){
+  space && loginfo "[MISP][CONFIG][APACHE]" "Configurando: ${COLOR_RED}APACHE${COLOR_NC}."
+  sudo a2enmod mod_access_compat
+  sudo a2enmod ssl
+  sudo a2enmod rewrite
+  sudo a2enmod headers
+  sudo a2enmod brotli
+  sudo a2enmod xdebug
+
+  configApacheFiles
+
+  sudo sed -i "s/^#\(Listen 443\).*/\1/" /etc/apache2/listen.conf
+
+  sudo apachectl configtest
+  sudo systemctl enable --now apache2.service
+  sudo systemctl restart apache2.service
+}
+
+function preConfigMisp () {
+  configRepoMISP
+  configRepoMISPDep
+  installCake
+  permissions
+  prepareDB
+  configMISPFiles
+  logRotation
+  configOpenSSL
+  setupGnuPG
+  apacheConfig
+}
+###################### FIM CONFIG DEP MISP -----------------------------------------------
+
+
+
+
+
+
+
+###################### INSTALAÇÃO --------------------------------------------------------
+function installSupported () {
+  space
+  loginfo "" "PROCESSO DE INSTALAÇÃO DO ${COLOR_BLUE}MISP Core${COLOR_NC} no ${COLOR_RED}$(. /etc/os-release && echo ${PRETTY_NAME} | tr '[:lower:]' '[:upper:]')${COLOR_NC}"
+  space
+
+  ###################### CONFIG SUDO E SUDOERS ------------------------------------------
+  checkSudoers
+
+  ###################### CONFIG ADMIN ---------------------------------------------------
+  adminConfig
+
+  ###################### CONFIG LOCAL ---------------------------------------------------
+  localConfig
+
+  ###################### INSTALL REPO e DEP ---------------------------------------------
+  repoDep
+
+  ###################### CONFIG REPO e DEP ----------------------------------------------
+  configDep
+
+  ###################### PRE CONFIG MISP ------------------------------------------------
+  preConfigMisp
+
+  unset $(sudo egrep -v "^\s*(;|$|\[|#)" /admin/.env | cut -f1 -d'=')
+}
+
+
+colors
+
+installSupported
