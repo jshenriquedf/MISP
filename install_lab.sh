@@ -7,7 +7,12 @@
 #
 # AUTOR: Jose Henrique da Silva
 # Gerência: GECIB
-#
+# cd /srv/www/MISP/
+# git fetch
+# checkout /srv/www/MISP/app/composer.json
+# git stash pop
+# git reset --hard
+# 
 ##
 
 VERSION='1.0'
