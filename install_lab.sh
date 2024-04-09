@@ -540,10 +540,11 @@ function configPhpPecl () {
     sudo pecl install rdkafka 
     sudo pecl install simdjson
     sudo pecl install brotli
+    sudo pecl install zstd
 
     # /usr/lib64/php7/extensions/
     loginfo "[CONFIG][PHP][EXTENSIONS]" "Configurando: ${COLOR_RED}PHP EXTENSIONS${COLOR_NC}."
-    set -- "ssdeep" "rdkafka" "brotli" "simdjson"
+    set -- "ssdeep" "rdkafka" "brotli" "simdjson" "zstd"
     for mod in "$@"; do
       echo "extension=${mod}.so" | sudo tee "${PHP_ETC_BASE}/conf.d/${mod}.ini"
     done;
